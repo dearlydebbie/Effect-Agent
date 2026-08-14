@@ -69,3 +69,7 @@ Add a provider implementation for the relevant interface in `agents/providers.ts
 ## Adding platform adapters
 
 Implement `PlatformAdapter` in `adapters/platform-adapter.ts`. Define a platform-specific output type. Return safe connection errors. Keep submission outside the adapter in V1. Add tests proving that automatic publishing is disabled.
+
+## Git workflow
+
+Run the relevant validation before each commit. Never commit secrets, API keys, MCP credentials, `.env.local`, or ignored local configuration. Commit every successfully completed development milestone with a clear descriptive message, then push the commit to the configured upstream branch and verify that the push succeeded. Include the commit hash and push result in every milestone completion report. If Git, authentication, or the remote prevents a safe push, stop and report the exact error. Never force-push unless the user explicitly requests it. Do not create commits for failed or incomplete work unless the user explicitly requests it.
