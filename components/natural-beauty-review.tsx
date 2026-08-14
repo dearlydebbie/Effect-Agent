@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { naturalBeautyAssessmentIds, naturalBeautyReviewIdentity } from "../config/builds";
 import { naturalBeautyAutomatedQualityAssessment, naturalBeautyOpenEyesQA, naturalBeautyVisibleTeethQA } from "../data/natural-beauty-controlled-evidence-qa";
 import { naturalBeautyIteration1VisualQA } from "../data/natural-beauty-build-001";
@@ -8,8 +8,8 @@ import { BrowserBuildReviewRepository, BuildReviewService } from "../services/bu
 import { BrowserLearningRepository } from "../services/learning-persistence";
 import type { AssessmentAgreement, AssessmentDecisionRecord, BuildHumanDecision, BuildReviewState } from "../types/build-review";
 import type { LearningCorpus, LearningRecord } from "../types/learning";
-import type { WorkspaceStatus } from "../types/system-health";
 import type { VisualQAReport } from "../types/creative-qa";
+import type { NaturalBeautyReviewReadiness } from "../types/natural-beauty-review-readiness";
 
 const currentIterationPlan = {
   id: "natural-beauty-iteration-2-plan",
@@ -17,7 +17,7 @@ const currentIterationPlan = {
   readyOperationCount: naturalBeautyAutomatedQualityAssessment.iteration2ReadyOperations.length,
 };
 
-export function NaturalBeautyReview({ workspace, record, onCorpusChange }: { workspace: WorkspaceStatus | null; record: LearningRecord; onCorpusChange: (corpus: LearningCorpus) => void }) {
+export function NaturalBeautyReview({ record, onCorpusChange }: { record: LearningRecord; onCorpusChange: (corpus: LearningCorpus) => void }) {
   const [state, setState] = useState<BuildReviewState>(() => {
     if (typeof window === "undefined") return { identity: naturalBeautyReviewIdentity, assessmentDecisions: [], humanReview: null };
     try { return new BuildReviewService(new BrowserBuildReviewRepository(window.localStorage)).load(naturalBeautyReviewIdentity); }
@@ -27,8 +27,17 @@ export function NaturalBeautyReview({ workspace, record, onCorpusChange }: { wor
   const [humanNote, setHumanNote] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const liveProjectMatches = `lens-name:${workspace?.lensProject?.lensName ?? "UNKNOWN"}` === naturalBeautyReviewIdentity.lensId
-    && workspace.lensProject.projectFingerprint === naturalBeautyReviewIdentity.projectIdentityFingerprint;
+  const [readiness, setReadiness] = useState<NaturalBeautyReviewReadiness | null>(null);
+  const liveProjectMatches = readiness?.ready === true
+    && `lens-name:${readiness.lensName ?? "UNKNOWN"}` === naturalBeautyReviewIdentity.lensId
+    && readiness.buildStateFingerprint === naturalBeautyReviewIdentity.buildStateFingerprint;
+
+  useEffect(() => {
+    void fetch("/api/learning-lab/natural-beauty-review", { cache: "no-store" })
+      .then(async (response) => { if (!response.ok) throw new Error("Live review verification failed."); return response.json() as Promise<NaturalBeautyReviewReadiness>; })
+      .then(setReadiness)
+      .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Live review verification failed."));
+  }, []);
 
   const saveAssessment = (assessmentId: string, agreement: AssessmentAgreement) => {
     setMessage(null);
@@ -44,7 +53,11 @@ export function NaturalBeautyReview({ workspace, record, onCorpusChange }: { wor
   const review = async (decision: BuildHumanDecision) => {
     setBusy(true); setMessage(null);
     try {
-      if (!liveProjectMatches) throw new Error("The active Lens project does not match this build. Reload the current build.");
+      const verificationResponse = await fetch("/api/learning-lab/natural-beauty-review", { cache: "no-store" });
+      if (!verificationResponse.ok) throw new Error("Live review verification failed. Reload the current build.");
+      const currentReadiness = await verificationResponse.json() as NaturalBeautyReviewReadiness;
+      setReadiness(currentReadiness);
+      if (!currentReadiness.ready || currentReadiness.buildId !== naturalBeautyReviewIdentity.buildId || currentReadiness.buildStateFingerprint !== naturalBeautyReviewIdentity.buildStateFingerprint) throw new Error(currentReadiness.mismatches[0] ?? "The active Lens project does not match this build. Reload the current build.");
       const repository = new BrowserBuildReviewRepository(window.localStorage);
       const service = new BuildReviewService(repository);
       const result = service.saveHumanReview({
@@ -80,10 +93,13 @@ export function NaturalBeautyReview({ workspace, record, onCorpusChange }: { wor
       <div className="technical-confirmation"><div><strong>There are no confirmed changes to run.</strong><p>Unknown or unsupported changes cannot run.</p></div><button disabled title="There is no active proposal to cancel.">Cancel</button><button className="primary-button" disabled={currentIterationPlan.readyOperationCount === 0} onClick={confirmIteration}>Confirm iteration</button></div>
     </section>
     <section className="panel human-review-panel" data-build-fingerprint={naturalBeautyReviewIdentity.buildStateFingerprint}>
-      <div className="panel-head"><div><h3>Human Review</h3><p>Your decision is stored with the exact build state.</p></div><b className={`qa-state ${state.humanReview?.humanGate === "PASS" ? "pass" : state.humanReview ? "warning" : "unknown"}`}>{state.humanReview?.decision.replaceAll("_", " ") ?? "REQUIRED"}</b></div>
+      <div className="panel-head"><div><h3>Human Review</h3><p>Your decision is stored with the exact build state.</p></div><b className={`qa-state ${state.humanReview?.humanGate === "PASS" ? "pass" : liveProjectMatches ? "pass" : readiness ? "fail" : state.humanReview ? "warning" : "unknown"}`}>{state.humanReview?.decision.replaceAll("_", " ") ?? (liveProjectMatches ? "READY FOR DECISION" : readiness ? "NOT READY" : "VERIFYING")}</b></div>
+      {readiness && <div className="quality-gates" aria-label="Natural Beauty final review summary">{readiness.checks.map((check) => <div key={check.id}><b className={`qa-state ${check.passed ? "pass" : "fail"}`}>{check.passed ? "PASS" : "FAIL"}</b><strong>{check.label}</strong><p>{check.actual}</p></div>)}</div>}
       <textarea value={humanNote} onChange={(event) => setHumanNote(event.target.value)} placeholder="Add review notes." aria-label="Natural Beauty human review feedback" />
       <div className="human-actions"><button disabled={busy || !liveProjectMatches} title={!liveProjectMatches ? "The active Lens project does not match this build." : undefined} onClick={() => void review("REJECTED")}>Reject</button><button disabled={busy || !liveProjectMatches || !humanNote.trim()} title={!liveProjectMatches ? "The active Lens project does not match this build." : !humanNote.trim() ? "Describe the changes that you need." : undefined} onClick={() => void review("NEEDS_CHANGES")}>Needs changes</button><button className="primary-button" disabled={busy || !liveProjectMatches} title={!liveProjectMatches ? "The active Lens project does not match this build." : undefined} onClick={() => void review("APPROVED")}>Approve</button></div>
-      {!liveProjectMatches && <p className="build-error">The active Lens project does not match this build. Review actions are disabled.</p>}
+      {!readiness && <p>Effect Lab is checking the live Natural Beauty build.</p>}
+      {readiness && !liveProjectMatches && <p className="build-error">{readiness.mismatches.join(" ") || "The active Lens project does not match this build."} Review actions are disabled.</p>}
+      {liveProjectMatches && <div className="review-message"><strong>Natural Beauty is ready for your decision.</strong><p>Approval would complete Exercise 001. Approval would not publish the Lens.</p><p>Curriculum progress becomes 1/100 only after valid human approval.</p></div>}
       {state.humanReview && <div className="feedback-history"><div><b>{state.humanReview.decision.replaceAll("_", " ")}</b><p>{state.humanReview.note || "No written feedback."}</p><time>{new Date(state.humanReview.decidedAt).toLocaleString()}</time><small>Build state {state.humanReview.buildStateFingerprint.slice(0, 12)} · Published: NO</small></div></div>}
       {message && <p role="status">{message}</p>}
     </section>
