@@ -13,8 +13,8 @@ function connection(options: { gradeEnabled?: boolean; includeSoftFlashMarker?: 
     async callTool(name, args) {
       if (name === "QueryRuntimeSceneTool") return json({ data: { sceneRoots: [{ name: "Camera" }, { name: "Natural Beauty Grade" }, { name: "Natural Beauty Retouch" }] } });
       if (name === "asset-graphql") return json({ data: { allAssets: [
-        { name: "Natural Beauty Colour Material", path: "Assets/Natural Beauty Colour Material.mat" },
-        { name: "Natural Beauty LUT", path: "Assets/Natural Beauty LUT.png" },
+        { id: "9984c94e-8f7a-4198-a59b-e4f8d061ed7c", name: "Natural Beauty Colour Material", path: "Natural Beauty Colour Material.mat", type: "Material" },
+        { id: "8da2358c-e0d0-4b1c-a475-07948c97f36d", name: "Natural Beauty LUT", path: "Natural Beauty LUT.png", type: "FileTexture" },
         ...(options.includeSoftFlashMarker ? [{ name: "BlownWhite", path: "Assets/BlownWhite.png" }] : []),
       ] } });
       const code = String(args.code ?? "");

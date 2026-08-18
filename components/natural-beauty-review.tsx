@@ -10,6 +10,9 @@ import type { AssessmentAgreement, AssessmentDecisionRecord, BuildHumanDecision,
 import type { LearningCorpus, LearningRecord } from "../types/learning";
 import type { VisualQAReport } from "../types/creative-qa";
 import type { NaturalBeautyReviewReadiness } from "../types/natural-beauty-review-readiness";
+import type { NaturalBeautyFinalizationRecord } from "../types/soft-flash-cleanup";
+
+const finalizationRecordKey = "effect-lab-natural-beauty-finalization";
 
 const currentIterationPlan = {
   id: "natural-beauty-iteration-2-plan",
@@ -28,15 +31,39 @@ export function NaturalBeautyReview({ record, onCorpusChange }: { record: Learni
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [readiness, setReadiness] = useState<NaturalBeautyReviewReadiness | null>(null);
+  const [finalization, setFinalization] = useState<NaturalBeautyFinalizationRecord | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return JSON.parse(window.localStorage.getItem(finalizationRecordKey) ?? "null") as NaturalBeautyFinalizationRecord | null; }
+    catch { return null; }
+  });
+  const semanticRestorationAccepted = finalization?.buildId === naturalBeautyReviewIdentity.buildId
+    && finalization.restoration === "SEMANTIC_RESTORATION"
+    && finalization.cleanupTargetsGone
+    && finalization.compilePassed
+    && finalization.blockingRuntimeErrors.length === 0
+    && finalization.naturalBeautyUnchanged
+    && finalization.buildStateFingerprint === naturalBeautyReviewIdentity.buildStateFingerprint
+    && finalization.qa.technical === "PASS"
+    && finalization.qa.specification === "PASS"
+    && finalization.qa.visual === "PASS"
+    && finalization.qa.unresolvedCriticalFindings.length === 0
+    && finalization.humanReviewReady;
   const liveProjectMatches = readiness?.ready === true
     && `lens-name:${readiness.lensName ?? "UNKNOWN"}` === naturalBeautyReviewIdentity.lensId
-    && readiness.buildStateFingerprint === naturalBeautyReviewIdentity.buildStateFingerprint;
+    && readiness.buildStateFingerprint === naturalBeautyReviewIdentity.buildStateFingerprint
+    && (readiness.projectIdentityFingerprint === naturalBeautyReviewIdentity.projectIdentityFingerprint || semanticRestorationAccepted);
 
   useEffect(() => {
     void fetch("/api/learning-lab/natural-beauty-review", { cache: "no-store" })
       .then(async (response) => { if (!response.ok) throw new Error("Live review verification failed."); return response.json() as Promise<NaturalBeautyReviewReadiness>; })
       .then(setReadiness)
       .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Live review verification failed."));
+  }, []);
+
+  useEffect(() => {
+    const read = () => { try { setFinalization(JSON.parse(window.localStorage.getItem(finalizationRecordKey) ?? "null") as NaturalBeautyFinalizationRecord | null); } catch { setFinalization(null); } };
+    window.addEventListener("effect-lab-natural-beauty-finalized", read);
+    return () => window.removeEventListener("effect-lab-natural-beauty-finalized", read);
   }, []);
 
   const saveAssessment = (assessmentId: string, agreement: AssessmentAgreement) => {
@@ -95,6 +122,7 @@ export function NaturalBeautyReview({ record, onCorpusChange }: { record: Learni
     <section className="panel human-review-panel" data-build-fingerprint={naturalBeautyReviewIdentity.buildStateFingerprint}>
       <div className="panel-head"><div><h3>Human Review</h3><p>Your decision is stored with the exact build state.</p></div><b className={`qa-state ${state.humanReview?.humanGate === "PASS" ? "pass" : liveProjectMatches ? "pass" : readiness ? "fail" : state.humanReview ? "warning" : "unknown"}`}>{state.humanReview?.decision.replaceAll("_", " ") ?? (liveProjectMatches ? "READY FOR DECISION" : readiness ? "NOT READY" : "VERIFYING")}</b></div>
       {readiness && <div className="quality-gates" aria-label="Natural Beauty final review summary">{readiness.checks.map((check) => <div key={check.id}><b className={`qa-state ${check.passed ? "pass" : "fail"}`}>{check.passed ? "PASS" : "FAIL"}</b><strong>{check.label}</strong><p>{check.actual}</p></div>)}</div>}
+      {semanticRestorationAccepted && <p className="review-message">The verified Semantic Restoration record satisfies the project-identity check for Learning Build 001 only.</p>}
       <textarea value={humanNote} onChange={(event) => setHumanNote(event.target.value)} placeholder="Add review notes." aria-label="Natural Beauty human review feedback" />
       <div className="human-actions"><button disabled={busy || !liveProjectMatches} title={!liveProjectMatches ? "The active Lens project does not match this build." : undefined} onClick={() => void review("REJECTED")}>Reject</button><button disabled={busy || !liveProjectMatches || !humanNote.trim()} title={!liveProjectMatches ? "The active Lens project does not match this build." : !humanNote.trim() ? "Describe the changes that you need." : undefined} onClick={() => void review("NEEDS_CHANGES")}>Needs changes</button><button className="primary-button" disabled={busy || !liveProjectMatches} title={!liveProjectMatches ? "The active Lens project does not match this build." : undefined} onClick={() => void review("APPROVED")}>Approve</button></div>
       {!readiness && <p>Effect Lab is checking the live Natural Beauty build.</p>}

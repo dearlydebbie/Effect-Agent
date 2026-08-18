@@ -26,6 +26,7 @@ return {
 
 interface GradeReadback { objectId: string; objectName: string; componentId: string; componentType: string; enabled: boolean; materialId: string | null; materialName: string | null; materialPath: string | null; firstMaterialId: string | null; lutId: string | null; lutName: string | null; lutPath: string | null }
 interface RetouchReadback { objectId: string; objectName: string; componentId: string; componentType: string; enabled: boolean; faceIndex: number; softSkinIntensity: number; teethWhiteningIntensity: number; sharpenEyeIntensity: number; eyeWhiteningIntensity: number }
+interface AssetReadback { id: string; name: string; path: string | null; type: string }
 
 export async function verifyNaturalBeautyHumanReview(connection = LensStudioConnectionService.fromEnvironment(), connectionSource = process.env.LENS_STUDIO_MCP_CONNECTION_SOURCE): Promise<NaturalBeautyReviewReadiness> {
   const capturedAt = new Date().toISOString();
@@ -38,7 +39,9 @@ export async function verifyNaturalBeautyHumanReview(connection = LensStudioConn
     const identity = await inspectLensProject(connection);
     const payload = readToolJson(await connection.callSupportedTool("ExecuteEditorCode", { code: READ_CONTROLLED_STATE_CODE, timeoutMs: 10000 }));
     const value = payload.returnValue as { grade?: GradeReadback | null; retouch?: RetouchReadback | null } | undefined;
-    const grade = value?.grade ?? null;
+    const assetPayload = readToolJson(await connection.callSupportedTool("asset-graphql", { query: "{ allAssets(limit: 500) { id name path type } }" }));
+    const assets = ((assetPayload.data as { allAssets?: AssetReadback[] } | undefined)?.allAssets ?? []);
+    const grade = resolveGradeAssets(value?.grade ?? null, assets);
     const retouch = value?.retouch ?? null;
     const softFlashMarkers = [...identity.keySceneObjects, ...identity.assetNames].filter((name) => /BlownWhitePreset|Blown White|BlownWhite/i.test(name));
     const activeBuild = Boolean(grade && retouch && grade.objectName === "Natural Beauty Grade" && retouch.objectName === "Natural Beauty Retouch" && grade.componentType === "PostEffectVisual" && retouch.componentType === "RetouchVisual");
@@ -103,3 +106,9 @@ function add(checks: NaturalBeautyReadinessCheck[], id: string, label: string, e
 function addNumber(checks: NaturalBeautyReadinessCheck[], id: string, label: string, expected: number, actual: number | undefined) { add(checks, id, label, String(expected), actual === undefined ? "UNKNOWN" : String(actual), typeof actual === "number" && Math.abs(actual - expected) < 0.00001); }
 function readToolJson(result: LensStudioToolResult): Record<string, unknown> { const text = result.content?.find((item) => item.type === "text" && item.text)?.text; if (!text) return {}; try { return JSON.parse(text) as Record<string, unknown>; } catch { return {}; } }
 function fileName(value: string | null) { return value?.split(/[\\/]/).filter(Boolean).at(-1) ?? null; }
+function resolveGradeAssets(grade: GradeReadback | null, assets: AssetReadback[]): GradeReadback | null {
+  if (!grade) return null;
+  const material = assets.find((asset) => asset.id === grade.materialId);
+  const lut = assets.find((asset) => asset.id === grade.lutId);
+  return { ...grade, materialName: grade.materialName ?? material?.name ?? null, materialPath: grade.materialPath ?? material?.path ?? null, lutName: grade.lutName ?? lut?.name ?? null, lutPath: grade.lutPath ?? lut?.path ?? null };
+}

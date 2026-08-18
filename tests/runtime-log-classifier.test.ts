@@ -6,5 +6,6 @@ test("deprecations are separate from runtime errors", () => {
   assert.equal(classifyRuntimeLog("Warning: This API is deprecated.").classification, "DEPRECATION");
   assert.equal(classifyRuntimeLog("Error: Cannot find asset.").classification, "ERROR");
   assert.equal(classifyRuntimeLog("Warning: frame took longer.").classification, "WARNING");
+  assert.equal(classifyRuntimeLog('W 11:10:12.439 (@QNetworkAccessManager thread) stream 49 finished with error: "Host requires authentication"').classification, "WARNING");
   assert.equal(classifyRuntimeLog("Preview started.").classification, "INFO");
 });
