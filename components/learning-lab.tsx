@@ -26,8 +26,11 @@ import { naturalBeautyAutomatedQualityAssessment, naturalBeautyControlledPropert
 import type { NaturalBeautyLearningPlan } from "../types/natural-beauty-learning";
 import { NaturalBeautyReview } from "./natural-beauty-review";
 import { SoftFlashCleanupPanel } from "./soft-flash-cleanup-panel";
+import { LearningBuild001OutcomePanel, LearningBuild002View, LearningVelocityPanel } from "./learning-acceleration-panels";
+import { learningBuild001PostMortem, learningBuild001Velocity, naturalBeautyCompletedRecord } from "../data/learning-build-001-postmortem";
+import { learningVelocitySummary } from "../services/accelerated-learning";
 
-type Tab = "overview" | "presets" | "first-wave" | "beauty-preset" | "beauty-map" | "build-001" | "patterns" | "curriculum" | "knowledge";
+type Tab = "overview" | "presets" | "first-wave" | "beauty-preset" | "beauty-map" | "build-001" | "build-002" | "patterns" | "curriculum" | "knowledge";
 type Connection = { state: string; message: string; lensStudioVersion: string | null };
 const emptyCorpus: LearningCorpus = { patternCards: [], exercises: [], records: [], knowledge: [] };
 
@@ -44,9 +47,11 @@ export function LearningLab({ workspace = null }: { workspace?: WorkspaceStatus 
   const readiness = useMemo(() => assessCurriculumReadiness(corpus.patternCards, corpus.knowledge), [corpus]);
   const reward = unknownRewardSuitability();
   const beautyMap = useMemo(() => createBeautyCapabilityMap(beautyFaceBatchInspections), []);
+  const velocity = useMemo(() => learningVelocitySummary([learningBuild001Velocity], learningBuild001PostMortem.demonstratedCapabilities.filter((entry) => entry.status === "VERIFIED_REUSABLE").length), []);
 
   useEffect(() => {
     if (window.location.hash === "#build-001") window.queueMicrotask(() => setTab("build-001"));
+    if (window.location.hash === "#build-002") window.queueMicrotask(() => setTab("build-002"));
     const repository = new BrowserLearningRepository(window.localStorage);
     repository.load().then((value) => setCorpus(withBeautyInspection(value)));
     new BrowserPresetCensusRepository(window.localStorage).load().then(setCensus);
@@ -103,14 +108,15 @@ export function LearningLab({ workspace = null }: { workspace?: WorkspaceStatus 
     {workspace?.sandbox.status !== "VERIFIED" && <div className="notice"><span>!</span><div><strong>The training project is not ready</strong><p>{workspace?.sandbox.reasons.join(" ") || "Effect Lab could not verify the training project."} Learning operations cannot change Lens Studio.</p></div></div>}
     {workspace?.lensProject && <section className="panel sandbox-gate"><div><span>CURRENT TARGET</span><h2>{workspace.lensProject.lensName ?? "Unknown Lens"}</h2><p>{workspace.lensProject.projectFolder ?? "The project folder is unknown."}</p></div><dl><dt>Sandbox</dt><dd>{workspace.sandbox.status}</dd><dt>Fingerprint</dt><dd>{workspace.lensProject.projectFingerprint?.slice(0, 12) ?? "Unknown"}</dd><dt>Checked</dt><dd>{new Date(workspace.lensProject.checkedAt).toLocaleString()}</dd></dl><small>Effect Lab compares the project identity before a modifying learning operation.</small></section>}
     {message && <div className="learning-message" role="status">{message}</div>}
-    <div className="learning-tabs" role="tablist" aria-label="Learning Lab sections">{(["overview", "presets", "first-wave", "beauty-preset", "beauty-map", "build-001", "patterns", "curriculum", "knowledge"] as Tab[]).map((item) => <button role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); window.history.replaceState(null, "", item === "build-001" ? "/learning#build-001" : "/learning"); }}>{item === "presets" ? "Preset Library" : item === "first-wave" ? "First wave" : item === "beauty-preset" ? "BeautyPreset" : item === "beauty-map" ? "Beauty map" : item === "build-001" ? "Build 001" : item}</button>)}</div>
+    <div className="learning-tabs" role="tablist" aria-label="Learning Lab sections">{(["overview", "presets", "first-wave", "beauty-preset", "beauty-map", "build-001", "build-002", "patterns", "curriculum", "knowledge"] as Tab[]).map((item) => <button role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} key={item} onClick={() => { setTab(item); window.history.replaceState(null, "", item === "build-001" ? "/learning#build-001" : item === "build-002" ? "/learning#build-002" : "/learning"); }}>{item === "presets" ? "Preset Library" : item === "first-wave" ? "First wave" : item === "beauty-preset" ? "BeautyPreset" : item === "beauty-map" ? "Beauty map" : item === "build-001" ? "Build 001" : item === "build-002" ? "Build 002" : item}</button>)}</div>
 
-    {tab === "overview" && <LearningOverview summary={summary} corpus={corpus} reward={reward} census={census} readiness={readiness} />}
+    {tab === "overview" && <><LearningOverview summary={summary} corpus={corpus} reward={reward} census={census} readiness={readiness} /><LearningVelocityPanel summary={velocity} /></>}
     {tab === "presets" && <PresetLibraryView snapshot={census} />}
     {tab === "first-wave" && <FirstWaveView snapshot={census} busy={busy} inspectWave={inspectWave} />}
     {tab === "beauty-preset" && <BeautyPresetInspectionView inspection={beautyPresetInspection} />}
     {tab === "beauty-map" && <BeautyCapabilityMapView inspections={beautyFaceBatchInspections} map={beautyMap} />}
     {tab === "build-001" && <NaturalBeautyConfirmationView plan={naturalBeautyLearningPlan} workspace={workspace} corpus={corpus} onCorpusChange={(value) => setCorpus(withBeautyInspection(value))} />}
+    {tab === "build-002" && <LearningBuild002View />}
     {tab === "patterns" && <PatternView cards={corpus.patternCards} createExercise={createExercise} curriculumReady={readiness.some((item) => item.status !== "NOT_READY")} />}
     {tab === "curriculum" && <CurriculumView summary={summary} corpus={corpus} />}
     {tab === "knowledge" && <KnowledgeView corpus={corpus} />}
@@ -123,14 +129,13 @@ function withBeautyInspection(corpus: LearningCorpus): LearningCorpus {
   const verifiedKnowledge = [...beautyPresetInspection.knowledge, ...beautyFaceBatchKnowledge];
   const knowledgeIds = new Set(verifiedKnowledge.map((entry) => entry.id));
   const exercises = [...corpus.exercises.filter((entry) => entry.id !== naturalBeautyLearningPlan.exercise.id), naturalBeautyLearningPlan.exercise];
-  const storedRecord = corpus.records.find((entry) => entry.id === naturalBeautyLearningPlan.draftRecord.id);
-  const currentRecord = storedRecord ? { ...naturalBeautyIteration1.learningRecord, humanReview: storedRecord.humanReview, finalOutcome: storedRecord.finalOutcome, completedAt: storedRecord.completedAt, reusableLessons: storedRecord.reusableLessons } : naturalBeautyIteration1.learningRecord;
-  const records = [...corpus.records.filter((entry) => entry.id !== naturalBeautyLearningPlan.draftRecord.id), currentRecord];
+  const records = [...corpus.records.filter((entry) => entry.id !== naturalBeautyLearningPlan.draftRecord.id), naturalBeautyCompletedRecord];
   return { ...corpus, patternCards: [...corpus.patternCards.filter((card) => !cardIds.has(card.id)), ...verifiedCards], knowledge: [...corpus.knowledge.filter((entry) => !knowledgeIds.has(entry.id)), ...verifiedKnowledge], exercises, records };
 }
 
 function NaturalBeautyConfirmationView({ plan, workspace, corpus, onCorpusChange }: { plan: NaturalBeautyLearningPlan; workspace: WorkspaceStatus | null; corpus: LearningCorpus; onCorpusChange: (corpus: LearningCorpus) => void }) {
   const specification = plan.specification;
+  const completedRecord = corpus.records.find((entry) => entry.id === naturalBeautyIteration1.learningRecord.id) ?? naturalBeautyCompletedRecord;
   const expectedObjects = ["Camera Object", "Envmap", "Light", "Lighting", "AiPreviewAgent Handler"];
   const unexpected = workspace?.lensProject?.keySceneObjects.filter((name) => !expectedObjects.includes(name)) ?? [];
   const checks = [
@@ -158,9 +163,10 @@ function NaturalBeautyConfirmationView({ plan, workspace, corpus, onCorpusChange
     <section className="panel preflight-panel"><header><div><span className="eyebrow">FUTURE EXECUTION PREFLIGHT</span><h2>Sandbox safety</h2><p>Every check must pass again immediately before a confirmed build.</p></div><b>{checks.every((entry) => entry[2]) ? "CURRENTLY MATCHES" : "NOT READY"}</b></header><div>{checks.map(([label, value, pass]) => <article key={label}><span>{label}</span><strong>{value}</strong><b className={pass ? "pass" : "fail"}>{pass ? "PASS" : "BLOCK"}</b></article>)}</div></section>
     <section className="panel effectiveness-panel"><span className="eyebrow">LEARNING EFFECTIVENESS</span><h2>Evidence contribution</h2><div><article><strong>{plan.learningEffectiveness.retrievedPatternCards}</strong><span>Patterns retrieved</span></article><article><strong>{plan.learningEffectiveness.selectedPatternCards}</strong><span>Patterns selected</span></article><article><strong>{plan.learningEffectiveness.successfulLearnedOperations.length}</strong><span>Successful operations</span></article><article><strong>{plan.learningEffectiveness.failedOperations.length}</strong><span>Failed operations</span></article><article><strong>{plan.learningEffectiveness.qaResult}</strong><span>QA result</span></article><article><strong>{plan.learningEffectiveness.humanResult}</strong><span>Human result</span></article></div><p>No universal percentage is calculated.</p></section>
     <section className="panel technical-iteration-review"><header><div><span className="eyebrow">ITERATION 1 · EXECUTED PLAN</span><h2>Historical Lens Studio change</h2><p>{naturalBeautyIteration0.iterationPlan.inspectionMessage}</p></div><strong>{naturalBeautyIteration0.iterationPlan.readyOperationCount} EXECUTED</strong></header>{naturalBeautyIteration0.iterationPlan.changes.map((change) => <article key={change.id}><div><span>{change.category}</span><b className={change.status.toLowerCase()}>{change.status.replaceAll("_", " ")}</b></div><h3>{change.visualProblem}</h3><dl><dt>Target object</dt><dd>{change.targetObject?.name ?? "UNKNOWN"}</dd><dt>Component or asset</dt><dd>{change.targetComponentOrAsset?.name ?? "UNKNOWN"}</dd><dt>Property</dt><dd>{change.targetPropertyOrParameter ?? "UNKNOWN"}</dd><dt>Current</dt><dd>{formatValue(change.currentValue)}</dd><dt>Proposed</dt><dd>{change.proposedValueOrOperation ?? "No operation"}</dd><dt>Expected</dt><dd>{change.expectedVisualResult}</dd><dt>Confidence</dt><dd>{change.confidence}</dd><dt>Reversible</dt><dd>{change.reversible ? "Yes" : "No verified operation"}</dd></dl></article>)}</section>
-    <section className="panel confirmation-gate"><div className="review-message"><span className="eyebrow">HUMAN REVIEW GATE</span><h2>Learning Build 001 awaits human review</h2><p>Technical QA, Specification QA, and scoped Visual QA passed. Experience QA remains a warning because static previews do not prove movement, recording, startup, reset behaviour, or broad camera coverage.</p><strong role="status">{naturalBeautyAutomatedQualityAssessment.workflowStatus.replaceAll("_", " ")}. The Lens remains training-only. Nothing was published.</strong></div></section>
+    <LearningBuild001OutcomePanel />
     <SoftFlashCleanupPanel />
-    <NaturalBeautyReview record={corpus.records.find((entry) => entry.id === naturalBeautyIteration1.learningRecord.id) ?? naturalBeautyIteration1.learningRecord} onCorpusChange={onCorpusChange} />
+    {completedRecord.humanReview.decision !== "APPROVED" && <NaturalBeautyReview record={completedRecord} onCorpusChange={onCorpusChange} />}
+    {completedRecord.humanReview.decision === "APPROVED" && <section className="panel confirmation-gate"><div className="review-message"><span className="eyebrow">HUMAN REVIEW COMPLETE</span><h2>Learning Build 001 is approved</h2><p>Technical QA, Specification QA, and Visual QA passed. Experience QA remains a warning because the static evidence does not prove every runtime condition.</p><strong role="status">TRAINING COMPLETE. PUBLICATION CANDIDATE. NOT PUBLISHED.</strong></div></section>}
     <section className="panel knowledge-gap"><div><span className="eyebrow">KNOWLEDGE GAP</span><h2>Original LUT generation and encoding</h2><p>The required Lens Studio LUT packing and channel encoding are not verified. This build does not support a general claim about LUT quality.</p></div><div><strong>Future learning target</strong><p>Lens Studio LUT Construction and Encoding</p><small>Not investigated in this task.</small></div></section>
   </div>;
 }

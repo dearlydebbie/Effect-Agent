@@ -20,7 +20,7 @@ Keep Snapchat and TikTok separate. Do not invent MCP tool names, APIs, analytics
 
 Prefer `pbpaste | npm run lens:sync:manual:sandbox` to import the copied Lens Studio MCP config through stdin. Disk discovery is optional and every endpoint must pass live MCP and project-identity checks. Never copy the authorization value into source, logs, tests, documentation, command arguments, or client responses. `.env.local` must stay ignored. The endpoint and token can change when Lens Studio restarts.
 
-Keep Lens recipes in the orchestrator layer. Before a mutation, validate the specification, test the connection, discover the tools again, and require explicit human confirmation. Use only exact names returned by `tools/list`. Keep retries bounded. Store structured logs. Stop at human review. Never add a publish or submit operation.
+Keep Lens recipes in the orchestrator layer. Before a build begins, validate the specification, test the connection, discover the tools again, and require build-specification approval. Routine `VERIFIED_REUSABLE` operations inside that approved specification do not need repeated confirmation. Require explicit confirmation for UNKNOWN or destructive operations and material creative changes. Use only exact names returned by `tools/list`. Keep retries bounded. Store structured logs. Stop at human review. Never add a publish or submit operation.
 
 TikTok V1 only creates Effect House build packs. Do not claim direct Effect House control. Never use browser automation, scraping, or simulated clicks to bypass a platform rule.
 
@@ -73,3 +73,9 @@ Implement `PlatformAdapter` in `adapters/platform-adapter.ts`. Define a platform
 ## Git workflow
 
 Run the relevant validation before each commit. Never commit secrets, API keys, MCP credentials, `.env.local`, or ignored local configuration. Commit every successfully completed development milestone with a clear descriptive message, then push the commit to the configured upstream branch and verify that the push succeeded. Include the commit hash and push result in every milestone completion report. If Git, authentication, or the remote prevents a safe push, stop and report the exact error. Never force-push unless the user explicitly requests it. Do not create commits for failed or incomplete work unless the user explicitly requests it.
+
+## Production-led learning
+
+Effect Lab is now production-led. Prefer creating, testing and learning from Lenses over expanding infrastructure. Add infrastructure only when a concrete current-build blocker requires it. Reuse verified capability knowledge instead of repeatedly rediscovering it.
+
+Optimise for fewer human interruptions without weakening final human review or publishing confirmation.
